@@ -22,6 +22,25 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
+// Root route
+app.get("/", (req, res) => {
+  res.status(200).json({
+    status: "success",
+    message: "Welcome to Payment Gateway API",
+    version: "1.0.0",
+    endpoints: {
+      health: "/api/v1/health",
+      payments: {
+        create: "POST /api/v1/payments",
+        status: "GET /api/v1/payments/:id",
+        callback: "GET /api/v1/payments/callback",
+      },
+    },
+    documentation:
+      "Please refer to the README.md for detailed API documentation",
+  });
+});
+
 // Health check endpoint
 app.get("/api/v1/health", (req, res) => {
   res.status(200).json({
@@ -51,6 +70,11 @@ app.use((req, res) => {
     status: "error",
     message: "Route not found",
     path: req.originalUrl,
+    availableEndpoints: {
+      root: "/",
+      health: "/api/v1/health",
+      payments: "/api/v1/payments",
+    },
   });
 });
 
