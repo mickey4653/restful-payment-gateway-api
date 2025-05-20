@@ -8,14 +8,15 @@ class PaymentService {
   constructor() {
     this.paypalClientId = process.env.PAYPAL_CLIENT_ID;
     this.paypalClientSecret = process.env.PAYPAL_CLIENT_SECRET;
-    this.paypalBaseUrl = process.env.NODE_ENV === "production"
+    this.paypalMode = process.env.PAYPAL_MODE || "sandbox";
+    this.paypalBaseUrl = this.paypalMode === "production"
       ? "https://api-m.paypal.com"
       : "https://api-m.sandbox.paypal.com";
 
     // Log environment configuration
     console.log("Payment Service Configuration:", {
       environment: process.env.NODE_ENV,
-      paypalMode: process.env.PAYPAL_MODE,
+      paypalMode: this.paypalMode,
       baseUrl: this.paypalBaseUrl,
       hasClientId: !!this.paypalClientId,
       hasClientSecret: !!this.paypalClientSecret,
@@ -32,17 +33,30 @@ class PaymentService {
         throw new Error("PayPal credentials are not configured");
       }
 
-      console.log("Requesting PayPal access token...");
+      console.log("Requesting PayPal access token...", {
+        url: `${this.paypalBaseUrl}/v1/oauth2/token`,
+        mode: this.paypalMode,
+      });
+
+      const auth = Buffer.from(`${this.paypalClientId}:${this.paypalClientSecret}`).toString("base64");
+      console.log("Auth header generated:", !!auth);
+
       const response = await axios.post(
         `${this.paypalBaseUrl}/v1/oauth2/token`,
         "grant_type=client_credentials",
         {
           headers: {
             "Content-Type": "application/x-www-form-urlencoded",
-            Authorization: `Basic ${Buffer.from(`${this.paypalClientId}:${this.paypalClientSecret}`).toString("base64")}`,
+            Authorization: `Basic ${auth}`,
           },
         },
       );
+
+      if (!response.data || !response.data.access_token) {
+        console.error("Invalid PayPal response:", response.data);
+        throw new Error("Invalid response from PayPal");
+      }
+
       console.log("Successfully obtained PayPal access token");
       return response.data.access_token;
     } catch (error) {
@@ -59,7 +73,17 @@ class PaymentService {
           },
         },
       });
-      throw new Error("Failed to get PayPal access token");
+
+      // Check for specific error cases
+      if (error.response?.status === 401) {
+        throw new Error("Invalid PayPal credentials");
+      } else if (error.response?.status === 403) {
+        throw new Error("PayPal API access forbidden");
+      } else if (error.code === "ECONNREFUSED") {
+        throw new Error("Could not connect to PayPal API");
+      }
+
+      throw new Error(`Failed to get PayPal access token: ${error.message}`);
     }
   }
 
