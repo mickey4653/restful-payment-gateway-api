@@ -11,10 +11,28 @@ class PaymentService {
     this.paypalBaseUrl = process.env.NODE_ENV === "production"
       ? "https://api-m.paypal.com"
       : "https://api-m.sandbox.paypal.com";
+
+    // Log environment configuration
+    console.log("Payment Service Configuration:", {
+      environment: process.env.NODE_ENV,
+      paypalMode: process.env.PAYPAL_MODE,
+      baseUrl: this.paypalBaseUrl,
+      hasClientId: !!this.paypalClientId,
+      hasClientSecret: !!this.paypalClientSecret,
+    });
   }
 
   async getAccessToken() {
     try {
+      if (!this.paypalClientId || !this.paypalClientSecret) {
+        console.error("Missing PayPal credentials:", {
+          hasClientId: !!this.paypalClientId,
+          hasClientSecret: !!this.paypalClientSecret,
+        });
+        throw new Error("PayPal credentials are not configured");
+      }
+
+      console.log("Requesting PayPal access token...");
       const response = await axios.post(
         `${this.paypalBaseUrl}/v1/oauth2/token`,
         "grant_type=client_credentials",
@@ -25,9 +43,22 @@ class PaymentService {
           },
         },
       );
+      console.log("Successfully obtained PayPal access token");
       return response.data.access_token;
     } catch (error) {
-      console.error("PayPal Access Token Error:", error.response?.data || error.message);
+      console.error("PayPal Access Token Error:", {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          headers: {
+            ...error.config?.headers,
+            Authorization: "REDACTED",
+          },
+        },
+      });
       throw new Error("Failed to get PayPal access token");
     }
   }
@@ -86,6 +117,11 @@ class PaymentService {
 
   async getPaymentById(id) {
     try {
+      if (!id) {
+        console.error("No payment ID provided");
+        throw new Error("Payment ID is required");
+      }
+
       // First check our local storage
       const localPayment = payments.get(id);
       if (localPayment) {
@@ -153,6 +189,14 @@ class PaymentService {
         status: error.response?.status,
         data: error.response?.data,
         message: error.message,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          headers: {
+            ...error.config?.headers,
+            Authorization: "REDACTED",
+          },
+        },
       });
 
       if (error.response?.status === 404) {
