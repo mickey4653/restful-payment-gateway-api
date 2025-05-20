@@ -12,35 +12,15 @@ class PaymentService {
     this.paypalBaseUrl = this.paypalMode === "production"
       ? "https://api-m.paypal.com"
       : "https://api-m.sandbox.paypal.com";
-
-    // Log environment configuration
-    console.log("Payment Service Configuration:", {
-      environment: process.env.NODE_ENV,
-      paypalMode: this.paypalMode,
-      baseUrl: this.paypalBaseUrl,
-      hasClientId: !!this.paypalClientId,
-      hasClientSecret: !!this.paypalClientSecret,
-    });
   }
 
   async getAccessToken() {
     try {
       if (!this.paypalClientId || !this.paypalClientSecret) {
-        console.error("Missing PayPal credentials:", {
-          hasClientId: !!this.paypalClientId,
-          hasClientSecret: !!this.paypalClientSecret,
-        });
         throw new Error("PayPal credentials are not configured");
       }
 
-      console.log("Requesting PayPal access token...", {
-        url: `${this.paypalBaseUrl}/v1/oauth2/token`,
-        mode: this.paypalMode,
-      });
-
       const auth = Buffer.from(`${this.paypalClientId}:${this.paypalClientSecret}`).toString("base64");
-      console.log("Auth header generated:", !!auth);
-
       const response = await axios.post(
         `${this.paypalBaseUrl}/v1/oauth2/token`,
         "grant_type=client_credentials",
@@ -53,28 +33,16 @@ class PaymentService {
       );
 
       if (!response.data || !response.data.access_token) {
-        console.error("Invalid PayPal response:", response.data);
         throw new Error("Invalid response from PayPal");
       }
 
-      console.log("Successfully obtained PayPal access token");
       return response.data.access_token;
     } catch (error) {
       console.error("PayPal Access Token Error:", {
         status: error.response?.status,
-        data: error.response?.data,
         message: error.message,
-        config: {
-          url: error.config?.url,
-          method: error.config?.method,
-          headers: {
-            ...error.config?.headers,
-            Authorization: "REDACTED",
-          },
-        },
       });
 
-      // Check for specific error cases
       if (error.response?.status === 401) {
         throw new Error("Invalid PayPal credentials");
       } else if (error.response?.status === 403) {
@@ -91,7 +59,6 @@ class PaymentService {
     try {
       const accessToken = await this.getAccessToken();
 
-      // Create PayPal order
       const response = await axios.post(
         `${this.paypalBaseUrl}/v2/checkout/orders`,
         {
@@ -129,9 +96,7 @@ class PaymentService {
         payment_url: response.data.links.find((link) => link.rel === "approve").href,
       };
 
-      // Store payment data
       payments.set(paymentData.id, paymentData);
-
       return paymentData;
     } catch (error) {
       console.error("PayPal API Error:", error.response?.data || error.message);
@@ -142,22 +107,15 @@ class PaymentService {
   async getPaymentById(id) {
     try {
       if (!id) {
-        console.error("No payment ID provided");
         throw new Error("Payment ID is required");
       }
 
-      // First check our local storage
       const localPayment = payments.get(id);
       if (localPayment) {
-        console.log("Found payment in local storage:", localPayment);
         return localPayment;
       }
 
-      // If not in local storage, check PayPal
       const accessToken = await this.getAccessToken();
-      console.log("Fetching payment from PayPal for ID:", id);
-
-      // Get order details from PayPal
       const response = await axios.get(
         `${this.paypalBaseUrl}/v2/checkout/orders/${id}`,
         {
@@ -167,9 +125,6 @@ class PaymentService {
         },
       );
 
-      console.log("PayPal API Response:", response.data);
-
-      // Map PayPal status to our status
       let status;
       switch (response.data.status) {
       case "COMPLETED":
@@ -183,12 +138,10 @@ class PaymentService {
         status = "pending";
       }
 
-      // Get payment details from the first purchase unit
       const purchaseUnit = response.data.purchase_units[0];
       const amount = purchaseUnit.amount.value;
       const currency = purchaseUnit.amount.currency_code;
 
-      // Get payer details if available
       const payer = response.data.payer || {};
       const customerName = payer.name ? `${payer.name.given_name} ${payer.name.surname}` : "Unknown";
       const customerEmail = payer.email_address || "Unknown";
@@ -204,33 +157,20 @@ class PaymentService {
         paypal_response: response.data,
       };
 
-      // Store the payment data
       payments.set(id, paymentData);
-
       return paymentData;
     } catch (error) {
       console.error("PayPal API Error:", {
         status: error.response?.status,
-        data: error.response?.data,
         message: error.message,
-        config: {
-          url: error.config?.url,
-          method: error.config?.method,
-          headers: {
-            ...error.config?.headers,
-            Authorization: "REDACTED",
-          },
-        },
       });
 
       if (error.response?.status === 404) {
         return null;
       }
 
-      // If we have a local payment but PayPal API failed, return the local payment
       const localPayment = payments.get(id);
       if (localPayment) {
-        console.log("Returning local payment data after PayPal API error");
         return localPayment;
       }
 
@@ -242,7 +182,6 @@ class PaymentService {
     try {
       const accessToken = await this.getAccessToken();
 
-      // Capture the payment
       const response = await axios.post(
         `${this.paypalBaseUrl}/v2/checkout/orders/${orderId}/capture`,
         {},
@@ -254,7 +193,6 @@ class PaymentService {
         },
       );
 
-      // Update payment status in our storage
       const payment = payments.get(orderId);
       if (payment) {
         const updatedPayment = {

@@ -100,7 +100,6 @@ app.use((req, res) => {
       root: "/",
       health: "/api/v1/health",
       payments: "/api/v1/payments",
-      testPaypal: "/api/v1/test-paypal",
     },
   });
 });
