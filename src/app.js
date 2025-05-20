@@ -3,6 +3,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
+const paymentService = require("./services/payment.service");
 
 // Import routes
 const paymentRoutes = require("./routes/payment.routes");
@@ -51,6 +52,31 @@ app.get("/api/v1/health", (req, res) => {
   });
 });
 
+// PayPal configuration test endpoint
+app.get("/api/v1/test-paypal", async (req, res) => {
+  try {
+    const accessToken = await paymentService.getAccessToken();
+    res.status(200).json({
+      status: "success",
+      message: "PayPal configuration is valid",
+      environment: process.env.NODE_ENV,
+      paypalMode: process.env.PAYPAL_MODE,
+      hasAccessToken: !!accessToken,
+    });
+  } catch (error) {
+    console.error("PayPal Test Error:", error);
+    res.status(500).json({
+      status: "error",
+      message: "PayPal configuration test failed",
+      error: error.message,
+      environment: process.env.NODE_ENV,
+      paypalMode: process.env.PAYPAL_MODE,
+      hasClientId: !!process.env.PAYPAL_CLIENT_ID,
+      hasClientSecret: !!process.env.PAYPAL_CLIENT_SECRET,
+    });
+  }
+});
+
 // Routes
 app.use("/api/v1/payments", paymentRoutes);
 
@@ -74,6 +100,7 @@ app.use((req, res) => {
       root: "/",
       health: "/api/v1/health",
       payments: "/api/v1/payments",
+      testPaypal: "/api/v1/test-paypal",
     },
   });
 });
