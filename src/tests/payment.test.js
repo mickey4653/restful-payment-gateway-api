@@ -16,6 +16,13 @@ jest.mock("@paypal/paypal-server-sdk", () => ({
   },
 }));
 
+// Mock payment service methods
+jest.mock("../services/payment.service", () => ({
+  createPayment: jest.fn(),
+  getPaymentById: jest.fn(),
+  capturePayment: jest.fn(),
+}));
+
 describe("Payment API", () => {
   beforeEach(() => {
     // Clear all mocks before each test
@@ -29,6 +36,13 @@ describe("Payment API", () => {
         customer_email: "john@example.com",
         amount: 50.00,
       };
+
+      // Mock successful payment creation
+      paymentService.createPayment.mockResolvedValue({
+        id: "test-order-id",
+        status: "created",
+        payment_url: "https://www.sandbox.paypal.com/checkoutnow?token=test-token",
+      });
 
       const response = await request(app)
         .post("/api/v1/payments")
@@ -91,7 +105,7 @@ describe("Payment API", () => {
       };
 
       // Mock the payment service
-      jest.spyOn(paymentService, "getPaymentById").mockResolvedValue(mockPayment);
+      paymentService.getPaymentById.mockResolvedValue(mockPayment);
 
       const response = await request(app)
         .get(`/api/v1/payments/${orderId}`);
@@ -103,7 +117,7 @@ describe("Payment API", () => {
 
     it("should handle non-existent payment", async () => {
       // Mock the payment service to return undefined
-      jest.spyOn(paymentService, "getPaymentById").mockResolvedValue(undefined);
+      paymentService.getPaymentById.mockResolvedValue(undefined);
 
       const response = await request(app)
         .get("/api/v1/payments/non-existent-id");
@@ -116,8 +130,8 @@ describe("Payment API", () => {
 
   describe("GET /api/v1/payments/callback", () => {
     it("should handle successful payment callback", async () => {
-      // Mock the paymentService.capturePayment to return a successful payment
-      jest.spyOn(paymentService, "capturePayment").mockResolvedValue({
+      // Mock successful payment capture
+      paymentService.capturePayment.mockResolvedValue({
         status: "completed",
         id: "test-token",
         amount: 50.00,
