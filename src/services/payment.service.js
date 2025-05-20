@@ -86,7 +86,16 @@ class PaymentService {
 
   async getPaymentById(id) {
     try {
+      // First check our local storage
+      const localPayment = payments.get(id);
+      if (localPayment) {
+        console.log("Found payment in local storage:", localPayment);
+        return localPayment;
+      }
+
+      // If not in local storage, check PayPal
       const accessToken = await this.getAccessToken();
+      console.log("Fetching payment from PayPal for ID:", id);
 
       // Get order details from PayPal
       const response = await axios.get(
@@ -97,6 +106,8 @@ class PaymentService {
           },
         },
       );
+
+      console.log("PayPal API Response:", response.data);
 
       // Map PayPal status to our status
       let status;
@@ -122,20 +133,39 @@ class PaymentService {
       const customerName = payer.name ? `${payer.name.given_name} ${payer.name.surname}` : "Unknown";
       const customerEmail = payer.email_address || "Unknown";
 
-      return {
+      const paymentData = {
         id: response.data.id,
         customer_name: customerName,
         customer_email: customerEmail,
         amount: parseFloat(amount),
         currency,
         status,
+        payment_url: response.data.links?.find((link) => link.rel === "approve")?.href,
         paypal_response: response.data,
       };
+
+      // Store the payment data
+      payments.set(id, paymentData);
+
+      return paymentData;
     } catch (error) {
-      console.error("PayPal API Error:", error.response?.data || error.message);
+      console.error("PayPal API Error:", {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message,
+      });
+
       if (error.response?.status === 404) {
         return null;
       }
+
+      // If we have a local payment but PayPal API failed, return the local payment
+      const localPayment = payments.get(id);
+      if (localPayment) {
+        console.log("Returning local payment data after PayPal API error");
+        return localPayment;
+      }
+
       throw new Error("Failed to verify payment status");
     }
   }
