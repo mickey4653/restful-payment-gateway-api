@@ -31,27 +31,30 @@ describe("Payment API", () => {
 
   describe("POST /api/v1/payments", () => {
     it("should create a payment successfully", async () => {
-      const paymentData = {
+      const mockPayment = {
+        id: "test-order-id",
         customer_name: "John Doe",
         customer_email: "john@example.com",
-        amount: 50.00,
+        amount: 50,
+        status: "pending",
+        payment_url: "https://www.sandbox.paypal.com/checkoutnow?token=test-token",
       };
 
-      // Mock successful payment creation
-      paymentService.createPayment.mockResolvedValue({
-        id: "test-order-id",
-        status: "created",
-        payment_url: "https://www.sandbox.paypal.com/checkoutnow?token=test-token",
-      });
+      paymentService.createPayment.mockResolvedValue(mockPayment);
 
       const response = await request(app)
         .post("/api/v1/payments")
-        .send(paymentData);
+        .send({
+          customer_name: "John Doe",
+          customer_email: "john@example.com",
+          amount: 50,
+        });
 
       expect(response.status).toBe(201);
       expect(response.body.status).toBe("success");
-      expect(response.body.payment).toHaveProperty("id");
-      expect(response.body.payment).toHaveProperty("payment_url");
+      expect(response.body.data).toHaveProperty("id");
+      expect(response.body.data).toHaveProperty("payment_url");
+      expect(response.body.data).toEqual(mockPayment);
     });
 
     it("should validate required fields", async () => {
@@ -61,7 +64,7 @@ describe("Payment API", () => {
 
       expect(response.status).toBe(400);
       expect(response.body.status).toBe("error");
-      expect(response.body.message).toBe("Missing required fields: customer_name, customer_email, and amount are required");
+      expect(response.body.message).toBe("Missing required fields");
     });
 
     it("should validate email format", async () => {
@@ -70,7 +73,7 @@ describe("Payment API", () => {
         .send({
           customer_name: "John Doe",
           customer_email: "invalid-email",
-          amount: 50.00,
+          amount: 50,
         });
 
       expect(response.status).toBe(400);
@@ -84,7 +87,7 @@ describe("Payment API", () => {
         .send({
           customer_name: "John Doe",
           customer_email: "john@example.com",
-          amount: -50.00,
+          amount: -50,
         });
 
       expect(response.status).toBe(400);
@@ -95,29 +98,26 @@ describe("Payment API", () => {
 
   describe("GET /api/v1/payments/:id", () => {
     it("should get payment status successfully", async () => {
-      const orderId = "test-order-id";
       const mockPayment = {
-        id: orderId,
-        status: "completed",
-        amount: 50.00,
+        id: "test-order-id",
         customer_name: "John Doe",
         customer_email: "john@example.com",
+        amount: 50,
+        status: "completed",
       };
 
-      // Mock the payment service
       paymentService.getPaymentById.mockResolvedValue(mockPayment);
 
       const response = await request(app)
-        .get(`/api/v1/payments/${orderId}`);
+        .get("/api/v1/payments/test-order-id");
 
       expect(response.status).toBe(200);
       expect(response.body.status).toBe("success");
-      expect(response.body.payment).toEqual(mockPayment);
+      expect(response.body.data).toEqual(mockPayment);
     });
 
     it("should handle non-existent payment", async () => {
-      // Mock the payment service to return undefined
-      paymentService.getPaymentById.mockResolvedValue(undefined);
+      paymentService.getPaymentById.mockResolvedValue(null);
 
       const response = await request(app)
         .get("/api/v1/payments/non-existent-id");
@@ -130,43 +130,59 @@ describe("Payment API", () => {
 
   describe("GET /api/v1/payments/callback", () => {
     it("should handle successful payment callback", async () => {
-      // Mock successful payment capture
-      paymentService.capturePayment.mockResolvedValue({
-        status: "completed",
-        id: "test-token",
-        amount: 50.00,
-        customer_name: "John Doe",
-        customer_email: "john@example.com",
-      });
-
       const token = "test-token";
-      const payerId = "test-payer-id";
+      const mockPayment = {
+        id: token,
+        status: "completed",
+      };
+
+      paymentService.capturePayment.mockResolvedValue(mockPayment);
 
       const response = await request(app)
-        .get(`/api/v1/payments/callback?token=${token}&PayerID=${payerId}`);
+        .get(`/api/v1/payments/callback?token=${token}`);
 
       expect(response.status).toBe(200);
       expect(response.body.status).toBe("success");
-      expect(response.body.payment).toHaveProperty("status");
+      expect(response.body.message).toBe("Payment completed successfully");
+      expect(response.body.data).toEqual(mockPayment);
     });
 
     it("should handle missing token", async () => {
       const response = await request(app)
-        .get("/api/v1/payments/callback?PayerID=test-payer-id");
+        .get("/api/v1/payments/callback");
 
       expect(response.status).toBe(400);
       expect(response.body.status).toBe("error");
-      expect(response.body.message).toBe("Missing required parameters");
+      expect(response.body.message).toBe("Payment token is required");
+    });
+  });
+
+  describe("GET /api/v1/payments/callback/cancel", () => {
+    it("should handle payment cancellation", async () => {
+      const token = "test-token";
+      const mockPayment = {
+        id: token,
+        status: "cancelled",
+      };
+
+      paymentService.getPaymentById.mockResolvedValue(mockPayment);
+
+      const response = await request(app)
+        .get(`/api/v1/payments/callback/cancel?token=${token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe("success");
+      expect(response.body.message).toBe("Payment was cancelled");
+      expect(response.body.data).toEqual(mockPayment);
     });
 
-    it("should handle missing PayerID", async () => {
+    it("should handle missing token", async () => {
       const response = await request(app)
-        .get("/api/v1/payments/callback?token=test-token");
+        .get("/api/v1/payments/callback/cancel");
 
       expect(response.status).toBe(400);
       expect(response.body.status).toBe("error");
-      expect(response.body.message).toBe("Missing required parameters");
+      expect(response.body.message).toBe("Payment token is required");
     });
   });
 });
- 

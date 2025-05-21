@@ -4,7 +4,7 @@ const app = require("./app");
 const PORT = process.env.PORT || 3000;
 
 // Error handling middleware
-app.use((err, req, res, next) => {
+app.use((err, req, res) => {
   console.error("Error:", err);
   res.status(500).json({
     status: "error",

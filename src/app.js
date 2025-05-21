@@ -81,7 +81,7 @@ app.get("/api/v1/test-paypal", async (req, res) => {
 app.use("/api/v1/payments", paymentRoutes);
 
 // Error handling middleware
-app.use((err, req, res, next) => {
+app.use((err, req, res) => {
   console.error("Error:", err);
   res.status(err.status || 500).json({
     status: "error",
@@ -105,4 +105,3 @@ app.use((req, res) => {
 });
 
 module.exports = app;
- 
