@@ -130,3 +130,32 @@ The API returns standardized error responses:
 ## License
 
 This project is licensed under the ISC License.
+
+## Environment Variables
+
+The following environment variables are required:
+
+```env
+# PayPal Configuration
+PAYPAL_CLIENT_ID=your_paypal_client_id
+PAYPAL_CLIENT_SECRET=your_paypal_client_secret
+PAYPAL_MODE=sandbox
+
+# Payment Callback URL
+PAYMENT_CALLBACK_URL=https://your-vercel-domain.vercel.app/api/v1/payments/callback
+
+# Node Environment
+NODE_ENV=production
+```
+
+### Setting up Environment Variables
+
+1. For local development:
+   - Create a `.env` file in the root directory
+   - Copy the variables above and fill in your values
+
+2. For Vercel deployment:
+   - Go to your Vercel project settings
+   - Navigate to "Environment Variables"
+   - Add each variable with its corresponding value
+   - Make sure to use your actual Vercel domain in the `PAYMENT_CALLBACK_URL`
