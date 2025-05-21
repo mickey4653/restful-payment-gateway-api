@@ -75,8 +75,8 @@ class PaymentService {
             brand_name: "Payment Gateway",
             landing_page: "NO_PREFERENCE",
             user_action: "PAY_NOW",
-            return_url: process.env.PAYMENT_CALLBACK_URL,
-            cancel_url: `${process.env.PAYMENT_CALLBACK_URL}/cancel`,
+            return_url: `${process.env.VERCEL_URL || process.env.PAYMENT_CALLBACK_URL}/api/v1/payments/callback`,
+            cancel_url: `${process.env.VERCEL_URL || process.env.PAYMENT_CALLBACK_URL}/api/v1/payments/callback/cancel`,
           },
         },
         {
