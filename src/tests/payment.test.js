@@ -85,14 +85,14 @@ describe("Payment API", () => {
       const response = await request(app)
         .post("/api/v1/payments")
         .send({
-          customer_name: "John Doe",
-          customer_email: "john@example.com",
+          customer_name: "Test User",
+          customer_email: "test@example.com",
           amount: -50,
         });
 
       expect(response.status).toBe(400);
       expect(response.body.status).toBe("error");
-      expect(response.body.message).toBe("Amount must be a positive number");
+      expect(response.body.message).toBe("Amount must be greater than zero");
     });
   });
 
@@ -130,16 +130,38 @@ describe("Payment API", () => {
 
   describe("GET /api/v1/payments/callback", () => {
     it("should handle successful payment callback", async () => {
-      const token = "test-token";
       const mockPayment = {
-        id: token,
+        id: "test-token",
+        customer_name: "Test User",
+        customer_email: "test@example.com",
+        amount: 100,
         status: "completed",
+        currency: "USD",
+        payment_url: "https://www.sandbox.paypal.com/checkoutnow?token=test-token",
+        paypal_response: {
+          id: "test-token",
+          status: "COMPLETED",
+          purchase_units: [{
+            payments: {
+              captures: [{
+                amount: {
+                  currency_code: "USD",
+                  value: "100.00",
+                },
+              }],
+            },
+          }],
+        },
       };
 
-      paymentService.capturePayment.mockResolvedValue(mockPayment);
+      // Mock the payment service
+      jest.spyOn(paymentService, "capturePayment").mockResolvedValue({
+        status: "success",
+        data: mockPayment,
+      });
 
       const response = await request(app)
-        .get(`/api/v1/payments/callback?token=${token}`);
+        .get("/api/v1/payments/callback?token=test-token");
 
       expect(response.status).toBe(200);
       expect(response.body.status).toBe("success");
