@@ -149,7 +149,7 @@ class PaymentService {
         break;
       case "CANCELLED":
       case "VOIDED":
-        status = "failed";
+        status = "cancelled";
         break;
       default:
         status = "pending";
