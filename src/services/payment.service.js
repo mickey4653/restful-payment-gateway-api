@@ -20,7 +20,9 @@ class PaymentService {
         throw new Error("PayPal credentials are not configured");
       }
 
-      const auth = Buffer.from(`${this.paypalClientId}:${this.paypalClientSecret}`).toString("base64");
+      const auth = Buffer.from(
+        `${this.paypalClientId}:${this.paypalClientSecret}`,
+      ).toString("base64");
       const response = await axios.post(
         `${this.paypalBaseUrl}/v1/oauth2/token`,
         "grant_type=client_credentials",
@@ -59,24 +61,38 @@ class PaymentService {
     try {
       const accessToken = await this.getAccessToken();
 
+      // Debug logs
+      console.log("Environment Variables:", {
+        PAYMENT_CALLBACK_URL: process.env.PAYMENT_CALLBACK_URL,
+        NODE_ENV: process.env.NODE_ENV,
+        VERCEL_URL: process.env.VERCEL_URL,
+      });
+
       const response = await axios.post(
         `${this.paypalBaseUrl}/v2/checkout/orders`,
         {
           intent: "CAPTURE",
-          purchase_units: [{
-            amount: {
-              currency_code: "USD",
-              value: amount.toString(),
+          purchase_units: [
+            {
+              amount: {
+                currency_code: "USD",
+                value: amount.toString(),
+              },
+              description: "Payment for services",
+              custom_id: `PAY-${Date.now()}`,
             },
-            description: "Payment for services",
-            custom_id: `PAY-${Date.now()}`,
-          }],
+          ],
           application_context: {
             brand_name: "Payment Gateway",
             landing_page: "NO_PREFERENCE",
             user_action: "PAY_NOW",
-            return_url: process.env.PAYMENT_CALLBACK_URL,
-            cancel_url: `${process.env.PAYMENT_CALLBACK_URL}/cancel`,
+            return_url:
+              process.env.PAYMENT_CALLBACK_URL
+              || "https://restful-payment-gateway-api.vercel.app/api/v1/payments/callback",
+            cancel_url: `${
+              process.env.PAYMENT_CALLBACK_URL
+              || "https://restful-payment-gateway-api.vercel.app/api/v1/payments/callback"
+            }/cancel`,
           },
         },
         {
@@ -93,7 +109,8 @@ class PaymentService {
         customer_email,
         amount,
         status: "pending",
-        payment_url: response.data.links.find((link) => link.rel === "approve").href,
+        payment_url: response.data.links.find((link) => link.rel === "approve")
+          .href,
       };
 
       payments.set(paymentData.id, paymentData);
@@ -143,7 +160,9 @@ class PaymentService {
       const currency = purchaseUnit.amount.currency_code;
 
       const payer = response.data.payer || {};
-      const customerName = payer.name ? `${payer.name.given_name} ${payer.name.surname}` : "Unknown";
+      const customerName = payer.name
+        ? `${payer.name.given_name} ${payer.name.surname}`
+        : "Unknown";
       const customerEmail = payer.email_address || "Unknown";
 
       const paymentData = {
@@ -153,7 +172,8 @@ class PaymentService {
         amount: parseFloat(amount),
         currency,
         status,
-        payment_url: response.data.links?.find((link) => link.rel === "approve")?.href,
+        payment_url: response.data.links?.find((link) => link.rel === "approve")
+          ?.href,
         paypal_response: response.data,
       };
 
@@ -208,7 +228,10 @@ class PaymentService {
         paypal_response: response.data,
       };
     } catch (error) {
-      console.error("PayPal Capture Error:", error.response?.data || error.message);
+      console.error(
+        "PayPal Capture Error:",
+        error.response?.data || error.message,
+      );
       throw new Error("Failed to capture payment");
     }
   }
