@@ -23,7 +23,7 @@ router.post("/", validatePayment, async (req, res, next) => {
 });
 
 // Handle PayPal callback
-router.get("/callback", async (req, res, next) => {
+router.get("/callback", async (req, res) => {
   try {
     const { token } = req.query;
     if (!token) {
@@ -33,14 +33,21 @@ router.get("/callback", async (req, res, next) => {
       });
     }
 
-    const payment = await paymentService.capturePayment(token);
+    const result = await paymentService.capturePayment(token);
+
+    // Return a cleaner response structure
     res.status(200).json({
       status: "success",
       message: "Payment completed successfully",
-      data: payment,
+      data: result.data,
     });
   } catch (error) {
-    next(error);
+    console.error("Error capturing payment:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Failed to process payment",
+      error: error.message,
+    });
   }
 });
 

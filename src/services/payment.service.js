@@ -6,118 +6,100 @@ const payments = new Map();
 
 class PaymentService {
   constructor() {
-    this.paypalClientId = process.env.PAYPAL_CLIENT_ID;
-    this.paypalClientSecret = process.env.PAYPAL_CLIENT_SECRET;
-    this.paypalMode = process.env.PAYPAL_MODE || "sandbox";
-    this.paypalBaseUrl = this.paypalMode === "production"
-      ? "https://api-m.paypal.com"
-      : "https://api-m.sandbox.paypal.com";
+    this.mode = process.env.PAYPAL_MODE || "sandbox";
+    this.baseUrl = this.mode === "production"
+      ? "https://api.paypal.com"
+      : "https://api.sandbox.paypal.com";
+    this.clientId = process.env.PAYPAL_CLIENT_ID;
+    this.clientSecret = process.env.PAYPAL_CLIENT_SECRET;
+    this.callbackUrl = process.env.NODE_ENV === "production"
+      ? "https://restful-payment-gateway-api.vercel.app/api/v1/payments/callback"
+      : "http://localhost:3000/api/v1/payments/callback";
+    this.cancelUrl = process.env.NODE_ENV === "production"
+      ? "https://restful-payment-gateway-api.vercel.app/api/v1/payments/callback/cancel"
+      : "http://localhost:3000/api/v1/payments/callback/cancel";
   }
 
   async getAccessToken() {
     try {
-      if (!this.paypalClientId || !this.paypalClientSecret) {
-        throw new Error("PayPal credentials are not configured");
-      }
-
       const auth = Buffer.from(
-        `${this.paypalClientId}:${this.paypalClientSecret}`,
+        `${this.clientId}:${this.clientSecret}`,
       ).toString("base64");
+
       const response = await axios.post(
-        `${this.paypalBaseUrl}/v1/oauth2/token`,
+        `${this.baseUrl}/v1/oauth2/token`,
         "grant_type=client_credentials",
         {
           headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
             Authorization: `Basic ${auth}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+            Accept: "application/json",
           },
         },
       );
 
-      if (!response.data || !response.data.access_token) {
-        throw new Error("Invalid response from PayPal");
-      }
-
       return response.data.access_token;
     } catch (error) {
-      console.error("PayPal Access Token Error:", {
-        status: error.response?.status,
-        message: error.message,
-      });
-
-      if (error.response?.status === 401) {
-        throw new Error("Invalid PayPal credentials");
-      } else if (error.response?.status === 403) {
-        throw new Error("PayPal API access forbidden");
-      } else if (error.code === "ECONNREFUSED") {
-        throw new Error("Could not connect to PayPal API");
-      }
-
-      throw new Error(`Failed to get PayPal access token: ${error.message}`);
+      console.error("Error getting access token:", error.response?.data || error.message);
+      throw new Error("Failed to get PayPal access token");
     }
   }
 
-  async createPayment({ customer_name, customer_email, amount }) {
+  async createPayment(paymentData) {
     try {
       const accessToken = await this.getAccessToken();
 
-      // Debug logs
-      console.log("Environment Variables:", {
-        PAYMENT_CALLBACK_URL: process.env.PAYMENT_CALLBACK_URL,
-        NODE_ENV: process.env.NODE_ENV,
-        VERCEL_URL: process.env.VERCEL_URL,
-      });
-
       const response = await axios.post(
-        `${this.paypalBaseUrl}/v2/checkout/orders`,
+        `${this.baseUrl}/v2/checkout/orders`,
         {
           intent: "CAPTURE",
           purchase_units: [
             {
               amount: {
                 currency_code: "USD",
-                value: amount.toString(),
+                value: paymentData.amount.toString(),
               },
-              description: "Payment for services",
-              custom_id: `PAY-${Date.now()}`,
+              description: `Payment for ${paymentData.customer_name}`,
+              custom_id: paymentData.customer_email,
             },
           ],
           application_context: {
-            brand_name: "Payment Gateway",
-            landing_page: "NO_PREFERENCE",
+            return_url: this.callbackUrl,
+            cancel_url: this.cancelUrl,
+            brand_name: "Your Company Name",
+            landing_page: "LOGIN",
             user_action: "PAY_NOW",
-            return_url:
-              process.env.PAYMENT_CALLBACK_URL
-              || "https://restful-payment-gateway-api.vercel.app/api/v1/payments/callback",
-            cancel_url: `${
-              process.env.PAYMENT_CALLBACK_URL
-              || "https://restful-payment-gateway-api.vercel.app/api/v1/payments/callback"
-            }/cancel`,
+            shipping_preference: "NO_SHIPPING",
           },
         },
         {
           headers: {
-            "Content-Type": "application/json",
             Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
           },
         },
       );
 
-      const paymentData = {
+      // Create the payment data with all required fields
+      const paymentResponse = {
         id: response.data.id,
-        customer_name,
-        customer_email,
-        amount,
+        customer_name: paymentData.customer_name,
+        customer_email: paymentData.customer_email,
+        amount: paymentData.amount,
         status: "pending",
-        payment_url: response.data.links.find((link) => link.rel === "approve")
-          .href,
+        payment_url: response.data.links.find(
+          (link) => link.rel === "approve",
+        ).href,
       };
 
-      payments.set(paymentData.id, paymentData);
-      return paymentData;
+      // Store the payment data
+      payments.set(paymentResponse.id, paymentResponse);
+
+      return paymentResponse;
     } catch (error) {
-      console.error("PayPal API Error:", error.response?.data || error.message);
-      throw new Error("Failed to initialize payment");
+      console.error("Error creating payment:", error.response?.data || error.message);
+      throw new Error("Failed to create PayPal payment");
     }
   }
 
@@ -134,7 +116,7 @@ class PaymentService {
 
       const accessToken = await this.getAccessToken();
       const response = await axios.get(
-        `${this.paypalBaseUrl}/v2/checkout/orders/${id}`,
+        `${this.baseUrl}/v2/checkout/orders/${id}`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -203,36 +185,47 @@ class PaymentService {
       const accessToken = await this.getAccessToken();
 
       const response = await axios.post(
-        `${this.paypalBaseUrl}/v2/checkout/orders/${orderId}/capture`,
+        `${this.baseUrl}/v2/checkout/orders/${orderId}/capture`,
         {},
         {
           headers: {
-            "Content-Type": "application/json",
             Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
           },
         },
       );
 
-      const payment = payments.get(orderId);
-      if (payment) {
-        const updatedPayment = {
-          ...payment,
-          status: "completed",
-        };
-        payments.set(orderId, updatedPayment);
+      // Get the stored payment data
+      const storedPayment = payments.get(orderId);
+      if (!storedPayment) {
+        throw new Error("Payment not found");
       }
 
-      return {
-        id: orderId,
+      // Extract payment details from PayPal response
+      const capture = response.data.purchase_units[0].payments.captures[0];
+      const currency = capture.amount.currency_code;
+      const amount = parseFloat(capture.amount.value);
+
+      // Update the payment status while preserving original customer info
+      const updatedPayment = {
+        ...storedPayment,
         status: "completed",
+        currency,
+        amount,
         paypal_response: response.data,
       };
+
+      // Store the updated payment
+      payments.set(orderId, updatedPayment);
+
+      return {
+        status: "success",
+        data: updatedPayment,
+      };
     } catch (error) {
-      console.error(
-        "PayPal Capture Error:",
-        error.response?.data || error.message,
-      );
-      throw new Error("Failed to capture payment");
+      console.error("Error capturing payment:", error.response?.data || error.message);
+      throw new Error("Failed to capture PayPal payment");
     }
   }
 }
